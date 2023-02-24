@@ -2,121 +2,83 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
-	"os"
+	"strings"
 )
 
-func generateServer(config *Config) {
-	var writer io.Writer
+type Proxy struct {
+	Targets  map[string]*httputil.ReverseProxy
+	Handlers map[string]http.HandlerFunc
+}
 
-	if config.log != "" {
-		logFile, err := os.OpenFile(config.log, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
-			log.Fatalf("Error opening log file: %v", err)
-		}
-		defer logFile.Close()
-		writer = io.MultiWriter(os.Stderr, logFile)
-	} else {
-		writer = os.Stderr
-	}
-	log.SetOutput(writer)
-	log.SetFlags(log.Ltime | log.Lshortfile)
+func create_rps(config *Config) *Proxy {
 
-	if config.home == "" {
-		log.Println("homeの指定がありませんでした。/へのアクセスには404を返します。")
-	} else {
-		log.Printf("/へのアクセスには%vを返します。", config.home)
+	proxy := Proxy{
+		Targets:  map[string]*httputil.ReverseProxy{},
+		Handlers: map[string]http.HandlerFunc{},
 	}
 
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if config.home == "" {
-			http.NotFound(w, r)
-		} else {
-			http.Redirect(w, r, config.home+r.URL.Path, http.StatusFound)
-		}
-	})
-
-	if len(config.reverse) == 0 {
-		log.Println("reverseの指定がありませんでした。")
-	} else {
-		for _, proxy := range config.reverse {
-			if proxy.out_dir == "/" {
-				log.Printf("/%s/ へのアクセスを http://localhost:%d/へ転送します。", proxy.in_dir, proxy.port)
-			} else {
-				log.Printf("/%s/ へのアクセスを http://localhost:%d/%s/へ転送します。", proxy.in_dir, proxy.port, proxy.out_dir)
-			}
-		}
-	}
-
-	// リバースプロキシの生成
 	for _, rp := range config.reverse {
-		proxyUrl, err := url.Parse(fmt.Sprintf("http://localhost:%d/", rp.port))
+		u, err := url.Parse(fmt.Sprintf("http://localhost:%d/%s/", rp.port, rp.in_dir))
 		if err != nil {
-			log.Fatalf("invalid port number %d for reverse proxy %q: %v", rp.port, rp.in_dir, err)
+			log.Printf("error : ", fmt.Sprintf("http://%s:%d/%s/", config.host, rp.port, rp.in_dir))
+			log.Fatal(err)
 		}
+		r := httputil.NewSingleHostReverseProxy(u)
+		key := fmt.Sprintf("/%s", rp.in_dir)
+		if r == nil {
+			log.Printf("error : url %s nil", u)
+			log.Printf("error : key %s nil", key)
+			continue
+		}
+		proxy.Targets[key] = r
+		proxy.Handlers[key] = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			//r.URL.Path = key + r.URL.Path
+			proxy.Targets[key].ServeHTTP(w, r)
+			log_request(r)
+		})
+	}
 
-		proxy := httputil.NewSingleHostReverseProxy(proxyUrl)
+	return &proxy
 
-		http.HandleFunc(
-			fmt.Sprintf("/%s/", rp.in_dir),
-			func(w http.ResponseWriter, r *http.Request) {
-				// httpsは対応していないかんじ
-				// クライアントがリクエストしたURLを取得
-				log.Println("---------------------------------------------")
-				log.Printf("リクエストされたURL : %s", r.URL.String())
+}
 
-				/*
-					originalURL := fmt.Sprintf("http://%s%s/", r.Host, r.RequestURI)
-					targetURL, err := url.Parse(originalURL)
-					if err != nil {
-						log.Println(err)
-						log.Printf("Error : 不正なURL : %s", originalURL)
-					}
-				*/
-				log_request(r)
+func server(config *Config) {
 
-				log.Println("-- rewrite --")
-				// example.com/aaa/にアクセスがあったとき
-				// r.RequestURI と r.Pathの両方に/aaa/が入る
-				// localhost:8080/aaa/に飛ばすとき
-				// どうもそのままだとpath + requesturiしてしまうみたい
+	// 1段目のリバースプロキシサーバーの設定
+	proxy := create_rps(config)
 
-				originalURL := "http://" + r.Host + r.RequestURI
-				target, _ := url.Parse(originalURL)
-				r.URL.Host = target.Host
-				r.URL.Scheme = target.Scheme
-				r.URL.Path = target.Path
+	mux := http.NewServeMux()
+	//mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	//	fmt.Fprintf(w, "Hello World!")
+	//})
+	for _, rp := range config.reverse {
+		key := fmt.Sprintf("/%s", rp.in_dir)
+		mux.Handle(fmt.Sprintf("/%s/", rp.in_dir), proxy.Handlers[key])
+		log.Printf("localhost/%s", key)
+	}
 
-				r.URL.Host = r.Host // r.URL.HostにはリクエストされたURLを入れる
-				//r.Host = fmt.Sprintf("localhost:%d", rp.port) // r.HostにプロキシサーバーのURLを入れる
+	// リバースプロキシサーバーの起動
+	log.Fatal(http.ListenAndServe(":80", mux))
+}
 
-				log_request(r)
-				//log.Printf("%s/%s/", r.URL.Host, rp.in_dir)
-
-				proxy.ServeHTTP(w, r)
-			})
-		/*
-			http.Handle(
-				fmt.Sprintf("/%s/", rp.in_dir),
-				httputil.NewSingleHostReverseProxy(
-					&url.URL{
-						Scheme: "http",
-						Host:   fmt.Sprintf("localhost:%d", rp.port),
-					}),
-			)
-		*/
-		if rp.out_dir == "/" {
-			log.Printf("proxying http://localhost/%s/ to http://localhost:%d/", rp.in_dir, rp.port)
-		} else {
-			log.Printf("proxying http://localhost/%s/ to http://localhost:%d/%s/", rp.in_dir, rp.port, rp.out_dir)
+func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	log_request(r)
+	// 1段目のリバースプロキシサーバーにおいて、リクエストのパスに応じて
+	// 2段目のリバースプロキシサーバーに転送するように条件分岐を設定
+	for prefix, proxy := range p.Targets {
+		if strings.HasPrefix(r.URL.Path, prefix) {
+			r.URL.Path = strings.TrimPrefix(r.URL.Path, prefix)
+			proxy.ServeHTTP(w, r)
+			return
 		}
 	}
 
-	log.Fatal(http.ListenAndServe(":80", nil))
+	// パスに一致する条件がない場合は404エラーを返す
+	http.NotFound(w, r)
 }
 
 func log_request(r *http.Request) {
