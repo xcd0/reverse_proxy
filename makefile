@@ -20,7 +20,7 @@ win:
 	rm -rf $(DST)/$(BIN).upx.exe && upx $(DST)/$(BIN).exe -o $(DST)/$(BIN).upx.exe
 	rm -rf $(DST)/$(BIN).exe
 	mv $(DST)/$(BIN).upx.exe $(DST)/$(BIN).exe
-	until cp -f $(DST)/$(BIN).exe /mnt/d/public; do sleep 1; done
+	#until cp -f $(DST)/$(BIN).exe /mnt/d/public; do sleep 1; done
 
 linux:
 	rm -rf $(DST)/$(BIN)
