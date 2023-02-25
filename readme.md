@@ -27,6 +27,7 @@ Usage of ./reverse_proxy:
 * /var/www/html/index.htmlに静的なhtmlがおいてある。
 * localhost:4000にgitlabのサーバーが立っている。
 * localhost:5000にredmineのサーバーが立っている。
+
 という状況を考える。  
 
 * http://localhost/へのアクセスには/var/www/html/index.htmlを返したい。
@@ -34,9 +35,11 @@ Usage of ./reverse_proxy:
 * http://localhost/redmine/ ではredmineのあるlocalhost:5000に転送したい。
 
 この時、  
+
 ```sh
 $ ./reverse_proxy --host example.com --root /var/www/html/ --reverse git:4000:/ --reverse redmine:5000:/
 ```
+
 と実行する。
 
 ## FAQ
