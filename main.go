@@ -31,11 +31,12 @@ type Config struct {
 }
 
 type ReverseProxies struct {
-	port    int
-	in_dir  string
-	out_dir string
+	Port   int
+	InDir  string
+	OutDir string
 }
 
+// flag.Varで構造体に格納するためのインターフェースを満たすための記述  {{{2
 type stringSlice []string
 
 func (s *stringSlice) String() string {
@@ -47,13 +48,15 @@ func (s *stringSlice) Set(value string) error {
 	return nil
 }
 
+// }}}2
+
 func parseArgs() *Config {
 	config := &Config{}
 	flag.StringVar(&config.host, "host", "", "サーバーのドメインを指定します。指定がないときエラーです。")
 	flag.StringVar(&config.root, "root", "", "指定のディレクトリへ/を割り当てファイルサーバーとします。指定がないとき/へのアクセスは404を返します。")
 	flag.StringVar(&config.log, "log", "", "指定のパスにログファイルを出力します。指定がないときreverse_proxy.logに出力します。")
-	var reverseStrs stringSlice
-	flag.Var(&reverseStrs,
+	var reverseOption stringSlice
+	flag.Var(&reverseOption,
 		"reverse",
 		"リバースプロキシを定義します。\n"+
 			"\t--reverse aaa:1000:bbb のように指定するとhttp://localhost/aaa/がhttp://localhost:1000/bbbに転送されます。\n"+
@@ -75,7 +78,7 @@ func parseArgs() *Config {
 		config.log = "reverse_proxy.log"
 	}
 	SetLogfile(config.log) // logの設定をする
-	for _, str := range reverseStrs {
+	for _, str := range reverseOption {
 		proxy, err := parseReverseProxies(str) // 引数reverseの後ろの文字列を解析する
 		if err != nil {
 			log.Fatalf("invalid reverse proxy format: %v", err)
@@ -90,6 +93,7 @@ func SetLogfile(logfile string) { // 標準出力とログファイル両方に�
 	if logfile != "" {
 		logFile, err := os.OpenFile(logfile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
+			log.SetOutput(os.Stderr)
 			log.Fatalf("Error opening log file: %v", err)
 		}
 		defer logFile.Close()
@@ -98,7 +102,6 @@ func SetLogfile(logfile string) { // 標準出力とログファイル両方に�
 		writer = os.Stderr
 	}
 	log.SetOutput(writer)
-	log.SetFlags(log.Ltime | log.Lshortfile)
 }
 
 // 引数reverseの後ろの文字列を解析する
@@ -115,80 +118,41 @@ func parseReverseProxies(s string) (*ReverseProxies, error) {
 		return nil, err
 	}
 	proxy := ReverseProxies{
-		in_dir:  args[0],
-		port:    port,
-		out_dir: args[0],
+		InDir:  args[0],
+		Port:   port,
+		OutDir: args[0],
 	}
 	if len(args) == 3 {
-		proxy.out_dir = args[2]
+		proxy.OutDir = args[2]
 	}
 	return &proxy, nil
 }
 
 // }}}
 
-// サーバー実行 {{{
+/*
+// 基本はこれだけのコードで動く
+func main() {
+	gitURL, _ := url.Parse("http://localhost:8080/git/")
+	http.Handle("/", http.FileServer(http.Dir("/mnt/d/public/html")))
+	http.Handle("/git/", http.StripPrefix("/git/", httputil.NewSingleHostReverseProxy(gitURL)))
+	http.ListenAndServe(":80", nil)
+}
+*/
+
 func RunServer(config *Config) {
-	mux := http.NewServeMux()   // 1段目のプロキシサーバー ホスト名の書き換えとルーティング
-	proxy := create_rps(config) // 2段目のリバースプロキシサーバーの設定
-	for _, rp := range config.reverse {
-		mux.Handle(
-			fmt.Sprintf("/%s/", rp.in_dir),
-			proxy.Handlers[fmt.Sprintf("/%s", rp.in_dir)],
-		)
+	http.Handle("/", http.FileServer(http.Dir(config.root)))
 
+	for _, r := range config.reverse {
+		Url, _ := url.Parse(fmt.Sprintf("http://localhost:%d/%s/", r.Port, r.OutDir))
+		log.Printf("url : %s", Url)
+		log.Printf("in  : %s", r.InDir)
+		log.Printf("out : %s", r.OutDir)
+		log.Printf("port: %d", r.Port)
+		http.Handle(fmt.Sprintf("/%s/", r.InDir), http.StripPrefix(fmt.Sprintf("/%s/", r.InDir), httputil.NewSingleHostReverseProxy(Url)))
 	}
-	log.Fatal(http.ListenAndServe(":80", mux)) // リバースプロキシサーバーの起動
-}
 
-// 2段目のリバースプロキシサーバーを指定されたディレクトリ分作る
-func create_rps(config *Config) *Proxy {
-	proxy := Proxy{
-		Targets:  map[string]*httputil.ReverseProxy{},
-		Handlers: map[string]http.HandlerFunc{},
-	}
-	for _, rp := range config.reverse {
-		// 転送先のURLのチェック
-		u, err := url.Parse(fmt.Sprintf("http://localhost:%d/%s/", rp.port, rp.in_dir))
-		if err != nil {
-			log.Printf("error : ", fmt.Sprintf("http://%s:%d/%s/", config.host, rp.port, rp.in_dir))
-			log.Fatal(err)
-		}
-		r := httputil.NewSingleHostReverseProxy(u) // 転送先のURLに転送させるリバースプロキシサーバー
-		key := fmt.Sprintf("/%s", rp.in_dir)       // 構造体Proxyのmapのキー
-		if r == nil {
-			log.Printf("error : Cannot create reverse proxy server. url : %s. key : %s ", u, key)
-			continue
-		}
-		proxy.Targets[key] = r
-		proxy.Handlers[key] = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			//r.URL.Path = key + r.URL.Path
-			proxy.Targets[key].ServeHTTP(w, r)
-			debug_request(r)
-		})
-	}
-	return &proxy
-}
-
-type Proxy struct {
-	// mapのkeyは/aaaのように最初の1字は/とする
-	Targets  map[string]*httputil.ReverseProxy
-	Handlers map[string]http.HandlerFunc
-}
-
-func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	debug_request(r)
-	// 1段目のリバースプロキシサーバーにおいて、リクエストのパスに応じて
-	// 2段目のリバースプロキシサーバーに転送するように条件分岐を設定
-	for prefix, proxy := range p.Targets {
-		if strings.HasPrefix(r.URL.Path, prefix) {
-			r.URL.Path = strings.TrimPrefix(r.URL.Path, prefix)
-			proxy.ServeHTTP(w, r)
-			return
-		}
-	}
-	log.Printf("Warning : status 404 : %s%s", r.Host, r.RequestURI)
-	http.NotFound(w, r) // パスに一致する条件がない場合は404エラーを返す
+	http.ListenAndServe(":80", nil)
 }
 
 func debug_request(r *http.Request) {
@@ -203,5 +167,3 @@ func debug_url(u *url.URL) {
 		"\nr.URL.Scheme : %v, \n r.URL.Opaque : %v, \n r.URL.User : %v, \n r.URL.Host : %v, \n r.URL.Path : %v, \n r.URL.RawPath : %v, \n r.URL.OmitHost : %v, \n r.URL.ForceQuery : %v, \n r.URL.RawQuery : %v, \n r.URL.Fragment : %v, \n r.URL.RawFragment : %v, \n ",
 		u.Scheme, u.Opaque, u.User, u.Host, u.Path, u.RawPath, u.OmitHost, u.ForceQuery, u.RawQuery, u.Fragment, u.RawFragment)
 }
-
-// }}}
