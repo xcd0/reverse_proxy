@@ -146,7 +146,11 @@ func main() {
 */
 
 func runServer(config *Config) {
+
+	log.Print(config)
+
 	http.Handle("/", http.FileServer(http.Dir(config.root)))
+
 
 	for _, r := range config.reverse {
 		URL, _ := url.Parse(fmt.Sprintf("http://localhost:%d/%s/", r.Port, r.OutDir))

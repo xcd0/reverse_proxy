@@ -1,7 +1,7 @@
-DST=.
-BIN=reverse_proxy
-GOARCH=amd64
-VERSION=0.1
+DST:=.
+BIN:=reverse_proxy
+GOARCH:=amd64
+VERSION:=0.1
 
 FLAGS_VERSION=-X main.version=$(VERSION) -X main.revision=$(git rev-parse --short HEAD)
 FLAGS=-tags netgo -installsuffix netgo -trimpath "-ldflags=-buildid=" -ldflags '-s -w -extldflags "-static"'
@@ -24,8 +24,22 @@ win:
 
 linux:
 	rm -rf $(DST)/$(BIN)
-	#GOARCH=$(GOARCH) GOOS=linux go build -o $(DST)/$(BIN)_linux $(FLAGS_UNIX) $(FLAGS)
 	GOARCH=$(GOARCH) GOOS=linux go build -o $(DST)/$(BIN) $(FLAGS_UNIX) $(FLAGS)
+	rm -rf $(DST)/$(BIN).upx && upx $(DST)/$(BIN) -o $(DST)/$(BIN).upx
+	rm -rf $(DST)/$(BIN)
+	mv $(DST)/$(BIN).upx $(DST)/$(BIN)
+
+mac:
+	rm -rf $(DST)/$(BIN)
+	GOOS=darwin go build -o $(DST)/$(BIN) $(FLAGS_UNIX) $(FLAGS)
+	rm -rf $(DST)/$(BIN).upx && upx $(DST)/$(BIN) -o $(DST)/$(BIN).upx
+	rm -rf $(DST)/$(BIN)
+	mv $(DST)/$(BIN).upx $(DST)/$(BIN)
+
+
+pi:
+	rm -rf $(DST)/$(BIN)
+	GOARM=6  GOARCH=arm  GOOS=linux go build -o $(DST)/$(BIN) $(FLAGS_UNIX) $(FLAGS)
 	rm -rf $(DST)/$(BIN).upx && upx $(DST)/$(BIN) -o $(DST)/$(BIN).upx
 	rm -rf $(DST)/$(BIN)
 	mv $(DST)/$(BIN).upx $(DST)/$(BIN)
