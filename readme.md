@@ -29,20 +29,25 @@ Usage of ./reverse_proxy:
 ## 使用例
 
 * サーバーのホスト名はexample.comとする。
-* /var/www/html/index.htmlに静的なhtmlがおいてある。
+
 * localhost:4000にgitlabのサーバーが立っている。
+	* http://localhost/git/ ではgitlabのあるlocalhost:4000に転送したい。
 * localhost:5000にredmineのサーバーが立っている。
-
-という状況を考える。  
-
-* http://localhost/へのアクセスには/var/www/html/index.htmlを返したい。
-* http://localhost/git/ ではgitlabのあるlocalhost:4000に転送したい。
-* http://localhost/redmine/ ではredmineのあるlocalhost:5000に転送したい。
+	* http://localhost/redmine/ ではredmineのあるlocalhost:5000に転送したい。
+* /var/www/html/index.htmlに静的なhtmlがおいてある。
+	* http://localhost/へのアクセスには/var/www/html/index.htmlを返したい。
+* /var/www/html/private/はユーザー名`user`パスワード`password`でアクセス権限したい。
+	* http://localhost/private/へのアクセスはbasic認証を要求したい。
 
 この時、  
 
 ```sh
-$ ./reverse_proxy --host example.com --root /var/www/html/ --reverse git:4000:/ --reverse redmine:5000:/
+$ ./reverse_proxy \
+	--host example.com \
+	--root /var/www/html/ \
+	--reverse git:4000:/ \
+	--reverse redmine:5000:/ \
+	--auth /private:user:password
 ```
 
 と実行する。
@@ -62,8 +67,27 @@ $ ./reverse_proxy --host example.com --root /var/www/html/ --reverse git:4000:/ 
 
 --reverse git:4000:hogehoge と指定する。
 
-### http://localhost/git/ を ユーザー名user パスワードpassword でアクセス制限したい。
+### 複数アカウント許可したい。他のディレクトリも制限したい。
 
---auth /git:user:password と指定する。
+```
+$ ./reverse_proxy \
+	--host example.com \
+	--root /var/www/html/ \
+	--reverse git:4000:/ \
+	--reverse redmine:5000:/ \
+	--auth /private:user1:password1 \
+	--auth /private:user2:password2 \
+	--auth /private:user3:password3 \
+	--auth /hoge/hoge:user1:password4 \
+	--auth /piyo/piyo:user4:password5
+```
+
+のように複数指定する。
+プログラムの内部ではパスワードはhash化して保持していて、生のパスワードはメモリ上にも保持していない。
+アカウントやパスワードを変更したい場合はプログラムを再起動して再設定する。
+
+現状している問題点は、呼び出しを自動化するためにはパスワードを自動化スクリプトに記述する必要があること。
+この点は生のパスワードを記述しなくてよい仕組みが必要になる。
+
 
 
