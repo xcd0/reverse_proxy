@@ -14,6 +14,9 @@ all:
 	make linux
 	make mac
 
+release-no-tag:
+	goreleaser release --snapshot --clean
+
 win:
 	rm -rf $(DST)/$(BIN).exe
 	#GOARCH=$(GOARCH) GOOS=windows go build -o $(DST)/$(BIN)_windows.exe $(FLAGS_WIN) 
