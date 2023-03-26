@@ -12,6 +12,7 @@ FLAGS_WIN=-tags netgo -installsuffix netgo -trimpath "-ldflags=-buildid=" -ldfla
 all:
 	make win
 	make linux
+	make mac
 
 win:
 	rm -rf $(DST)/$(BIN).exe
@@ -25,24 +26,24 @@ win:
 linux:
 	rm -rf $(DST)/$(BIN)
 	GOARCH=$(GOARCH) GOOS=linux go build -o $(DST)/$(BIN) $(FLAGS_UNIX) $(FLAGS)
-	rm -rf $(DST)/$(BIN).upx && upx $(DST)/$(BIN) -o $(DST)/$(BIN).upx
-	rm -rf $(DST)/$(BIN)
-	mv $(DST)/$(BIN).upx $(DST)/$(BIN)
+	#rm -rf $(DST)/$(BIN).upx && upx $(DST)/$(BIN) -o $(DST)/$(BIN).upx
+	#rm -rf $(DST)/$(BIN)
+	#mv $(DST)/$(BIN).upx $(DST)/$(BIN)
 
 mac:
 	rm -rf $(DST)/$(BIN)
 	GOOS=darwin go build -o $(DST)/$(BIN) $(FLAGS_UNIX) $(FLAGS)
-	rm -rf $(DST)/$(BIN).upx && upx $(DST)/$(BIN) -o $(DST)/$(BIN).upx
-	rm -rf $(DST)/$(BIN)
-	mv $(DST)/$(BIN).upx $(DST)/$(BIN)
+	#rm -rf $(DST)/$(BIN).upx && upx $(DST)/$(BIN) -o $(DST)/$(BIN).upx
+	#rm -rf $(DST)/$(BIN)
+	#mv $(DST)/$(BIN).upx $(DST)/$(BIN)
 
 
 pi:
 	rm -rf $(DST)/$(BIN)
 	GOARM=6  GOARCH=arm  GOOS=linux go build -o $(DST)/$(BIN) $(FLAGS_UNIX) $(FLAGS)
-	rm -rf $(DST)/$(BIN).upx && upx $(DST)/$(BIN) -o $(DST)/$(BIN).upx
-	rm -rf $(DST)/$(BIN)
-	mv $(DST)/$(BIN).upx $(DST)/$(BIN)
+	#rm -rf $(DST)/$(BIN).upx && upx $(DST)/$(BIN) -o $(DST)/$(BIN).upx
+	#rm -rf $(DST)/$(BIN)
+	#mv $(DST)/$(BIN).upx $(DST)/$(BIN)
 
 upx:
 	until sudo apt install upx -y --fix-missing; do sleep 1; done

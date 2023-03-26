@@ -1,0 +1,71 @@
+# This is an example .goreleaser.yml file with some sensible defaults.
+# Make sure to check the documentation at https://goreleaser.com
+before:
+  hooks:
+    - go mod tidy
+    - go generate ./...
+builds:
+  - main: .
+    env:
+      - CGO_ENABLED=0
+    flags: &flags
+      - -trimpath
+      - -tags=netgo
+      - -installsuffix=netgo
+    ldflags: &ldflags
+      - "-X main.version={{ .Version }}"
+      - "-X main.commit={{ .ShortCommit }}"
+      - "-X main.date={{ .CommitDate }}"
+      - -s
+      - -w
+      #- "-H windowsgui"
+      - -buildid=
+      # enable debugging symbols
+      #- "-extldflags '-static'"
+    mod_timestamp: &mod_timestamp "{{ .CommitTimestamp }}"
+    # ここがわかりにくい。linusのみamd64,armv6l(raspberry pi用)をビルドする。windowsとmacはarmd64のみビルドする。
+    # arm64も追加してもいいけれどユーザーが自分しかいないので...
+    goos:
+      - windows
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm
+    goarm:
+      - "6"
+    ignore:
+      - goos: windows
+        goarch: arm
+      - goos: darwin
+        goarch: arm
+
+archives:
+  - format: tar.gz
+    # this name template makes the OS and Arch compatible with the results of uname.
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}amd64
+      {{- else if and (eq .Arch "arm") (eq .Arm "6") }}armv6l
+      {{- else }}{{ .Arch }}{{ end }}
+    # use zip for windows archives
+    format_overrides:
+    - goos: windows
+      format: zip
+checksum:
+  name_template: 'checksums.txt'
+snapshot:
+  name_template: "{{ incpatch .Version }}-next"
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+
+# The lines beneath this are called `modelines`. See `:help modeline`
+# Feel free to remove those if you don't want/use them.
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+# vim: set ts=2 sw=2 tw=0 fo=cnqoj
