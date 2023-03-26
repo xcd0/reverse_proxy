@@ -1,4 +1,4 @@
-module exaple.com/rp
+module github.com/xcd0/reverse_proxy
 
 go 1.20
 
