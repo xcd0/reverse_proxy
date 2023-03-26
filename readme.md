@@ -8,6 +8,11 @@
 ```sh
 $ ./reverse_proxy --help
 Usage of ./reverse_proxy:
+  -auth value
+        basic認証によるアクセス制限を設定します。
+            --auth /aaa:alice:password のように指定して、http://localhost/aaa/へのアクセスをbasic認証でアクセス制限します。
+            ディレクトリ指定は先頭に/をつけてください。
+            --authの指定は複数指定できます。パスワードはhash化されて保持されます。再設定したい場合はサーバーを再起動させてください。
   -host string
         サーバーのドメインを指定します。指定がないときエラーです。
   -log string
@@ -46,14 +51,19 @@ $ ./reverse_proxy --host example.com --root /var/www/html/ --reverse git:4000:/ 
 
 ### http://localhost/git/ を http://localhost:4000/ に飛ばしたい。
 
---reverse git:4000:/ と指定する
+--reverse git:4000:/ と指定する。
 
 ### http://localhost/git/ を http://localhost:4000/git/ に飛ばしたい。
 
---reverse git:4000:git と指定する
---reverse git:4000 でもよい
+--reverse git:4000:git と指定する。
+--reverse git:4000 でもよい。
 
 ### http://localhost/git/ を http://localhost:4000/hogehoge/ に飛ばしたい。
 
---reverse git:4000:hogehoge と指定する
+--reverse git:4000:hogehoge と指定する。
+
+### http://localhost/git/ を ユーザー名user パスワードpassword でアクセス制限したい。
+
+--auth /git:user:password と指定する。
+
 
