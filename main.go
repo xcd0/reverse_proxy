@@ -67,9 +67,11 @@ func main() {
 }
 
 func dirAccessCheck(path string) bool {
-	if path == "/" {
-		return true // 全てアクセス制限
-	}
+	/*
+		if path == "/" {
+			return true // 全てアクセス制限
+		}
+	*/
 
 	// アクセスしようとしているpathが /a/b/cで
 	paths := strings.Split(path, "/") // a, b, c
