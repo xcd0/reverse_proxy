@@ -10,9 +10,11 @@ $ ./reverse_proxy --help
 Usage of ./reverse_proxy:
   -auth value
         basic認証によるアクセス制限を設定します。
-            --auth /aaa:alice:password のように指定して、http://localhost/aaa/へのアクセスをbasic認証でアクセス制限します。
+            --auth /aaa:alice:password のように指定して、http://localhost/aaa/へのアクセスをbasic認証でアクセス制限しま
+す。
             ディレクトリ指定は先頭に/をつけてください。
-            --authの指定は複数指定できます。パスワードはhash化されて保持されます。再設定したい場合はサーバーを再起動させてください。
+            --auth の指定は複数指定できます。パスワードはhash化されて保持されます。再設定したい場合はサーバーを再起動さ
+せてください。
   -host string
         サーバーのドメインを指定します。指定がないときエラーです。
   -log string
@@ -22,8 +24,16 @@ Usage of ./reverse_proxy:
             --reverse aaa:1000:bbb のように指定するとhttp://localhost/aaa/がhttp://localhost:1000/bbbに転送されます。
             --reverse ccc:2000     のように指定するとhttp://localhost/ccc/がhttp://localhost:2000/ccc/に転送されます。
             --reverse ddd:3000:/   のように指定するとhttp://localhost/ddd/がhttp://localhost:3000/に転送されます。
+            --reverse の指定は複数指定できます。
   -root string
         指定のディレクトリへ/を割り当てファイルサーバーとします。指定がないとき/へのアクセスは404を返します。
+  -vhost value
+        name baseのvirtual host機能を提供します。
+            --vhost aaa:/:80:/ のように指定して、http://aaa.$host/をhttp://localhost/だと見なします。
+            --vhost aaa:/:80:/dir のように指定して、http://aaa.$host/をhttp://localhost/dir/だと見なします。
+            --vhost bbb:/:3000:/ のように指定して、http://bbb.$host/をhttp://localhost:3000/だと見なします。
+            --vhost bbb:/dir:4000:/ のように指定して、http://bbb.$host/dir/をhttp://localhost:4000/だと見なします。
+            --vhost の指定は複数指定できます。
 ```
 
 ## 使用例
@@ -90,4 +100,15 @@ $ ./reverse_proxy \
 この点は生のパスワードを記述しなくてよい仕組みが必要になる。
 
 
+### aaa.example.com/hogeへのアクセスをexample.com:3000/piyo/に飛ばしたい。
+
+virtual host機能を実装したものの、確認ができていない。
+
+```
+$ ./reverse_proxy \
+	--host example.com \
+	--vhost aaa:hoge:3000:piyo 
+```
+
+dns回りの設定ができていれば使えるはず。
 

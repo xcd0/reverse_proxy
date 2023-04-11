@@ -36,34 +36,69 @@ func main() {
 	config = parseArgs() // 引数を解析しして構造体Configを作る
 	log.Print(config)
 	{
+		router := http.NewServeMux()
 		// reverse proxyが設定されていないパスへのアクセスは
 		// ディレクトリへのアクセスとみなす
-
-		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			debug_request(r)
-
 			if dirAccessCheck(r.URL.Path) {
 				if !authUser(w, r) { // ファイルへのアクセスを制限する
 					http.Error(w, "Forbidden", http.StatusForbidden)
 					return
 				}
 			}
-
-			// ファイルサーバーを実行する
-			http.FileServer(http.Dir(config.root)).ServeHTTP(w, r)
+			http.FileServer(http.Dir(config.root)).ServeHTTP(w, r) // ファイルサーバーを実行する
 		})
 
 		// reverse proxyが設定されているパスへのアクセスは別のポートに飛ばす
 		for _, r := range config.reverse {
-			URL, _ := url.Parse(fmt.Sprintf("http://localhost:%d/%s/", r.Port, r.OutDir))
-			log.Printf("url : %s", URL)
+			out_url, _ := url.Parse(fmt.Sprintf("http://localhost:%d/%s/", r.Port, r.OutDir))
+			log.Printf("url : %s", out_url)
 			log.Printf("in  : %s", r.InDir)
 			log.Printf("out : %s", r.OutDir)
 			log.Printf("port: %d", r.Port)
-			http.Handle(fmt.Sprintf("/%s/", r.InDir), http.StripPrefix(fmt.Sprintf("/%s/", r.InDir), httputil.NewSingleHostReverseProxy(URL)))
+			router.Handle(
+				fmt.Sprintf("/%s/", r.InDir),
+				http.StripPrefix(
+					fmt.Sprintf("/%s/", r.InDir),
+					httputil.NewSingleHostReverseProxy(out_url),
+				),
+			)
 		}
-		log.Fatal(http.ListenAndServe(":80", nil))
+		// virtual host
+		for _, v := range config.vhost {
+			out_url, _ := url.Parse(fmt.Sprintf("http://%s:%d/%s/", config.host, v.Port, v.OutDir))
+			log.Printf("url : %s", out_url)
+			log.Printf("in  : %s", v.InDir)
+			log.Printf("out : %s", v.OutDir)
+			log.Printf("port: %d", v.Port)
+			in_url := ""
+			if v.InDir == "/" {
+				in_url = fmt.Sprintf("%s.%s/", v.Vhost, config.host)
+			} else {
+				in_url = fmt.Sprintf("%s.%s/%s/", v.Vhost, config.host, v.InDir)
+			}
+			router.Handle(
+				in_url,
+				http.StripPrefix(
+					fmt.Sprintf("/%s/", v.InDir),
+					httputil.NewSingleHostReverseProxy(out_url),
+				),
+			)
+		}
+
+		log.Fatal(http.ListenAndServe(":80", Log(router)))
 	}
+}
+
+func Log(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rAddr := r.RemoteAddr
+		method := r.Method
+		path := r.URL.Path
+		fmt.Printf("Remote: %s [%s] %s\n", rAddr, method, path)
+		h.ServeHTTP(w, r)
+	})
 }
 
 func dirAccessCheck(path string) bool {
@@ -145,6 +180,7 @@ func authUser(w http.ResponseWriter, r *http.Request) bool {
 type Config struct {
 	root    string
 	host    string
+	vhost   []VirtualHost
 	reverse []ReverseProxies
 	auth    []Auth
 	authDir map[string]bool // アクセス制限があるディレクトリ
@@ -153,6 +189,13 @@ type Config struct {
 
 // ReverseProxies は引数で与えられた文字列から解析されたリバースプロキシの設定を保持する構造体です。
 type ReverseProxies struct {
+	Port   int
+	InDir  string
+	OutDir string
+}
+
+type VirtualHost struct {
+	Vhost  string
 	Port   int
 	InDir  string
 	OutDir string
@@ -185,19 +228,30 @@ func parseArgs() *Config {
 	flag.StringVar(&config.log, "log", "", "指定のパスにログファイルを出力します。指定がないときreverse_proxy.logに出力します。")
 	var authOption stringSlice
 	var reverseOption stringSlice
+	var vhostOption stringSlice
 	flag.Var(&reverseOption,
 		"reverse",
 		"リバースプロキシを定義します。\n"+
 			"\t--reverse aaa:1000:bbb のように指定するとhttp://localhost/aaa/がhttp://localhost:1000/bbbに転送されます。\n"+
 			"\t--reverse ccc:2000     のように指定するとhttp://localhost/ccc/がhttp://localhost:2000/ccc/に転送されます。\n"+
-			"\t--reverse ddd:3000:/   のように指定するとhttp://localhost/ddd/がhttp://localhost:3000/に転送されます。",
+			"\t--reverse ddd:3000:/   のように指定するとhttp://localhost/ddd/がhttp://localhost:3000/に転送されます。\n"+
+			"\t--reverse の指定は複数指定できます。",
 	)
 	flag.Var(&authOption,
 		"auth",
 		"basic認証によるアクセス制限を設定します。\n"+
 			"\t--auth /aaa:alice:password のように指定して、http://localhost/aaa/へのアクセスをbasic認証でアクセス制限します。\n"+
 			"\tディレクトリ指定は先頭に/をつけてください。\n"+
-			"\t--authの指定は複数指定できます。パスワードはhash化されて保持されます。再設定したい場合はサーバーを再起動させてください。",
+			"\t--auth の指定は複数指定できます。パスワードはhash化されて保持されます。再設定したい場合はサーバーを再起動させてください。",
+	)
+	flag.Var(&vhostOption,
+		"vhost",
+		"name baseのvirtual host機能を提供します。\n"+
+			"\t--vhost aaa:/:80:/ のように指定して、http://aaa.$host/をhttp://localhost/だと見なします。\n"+
+			"\t--vhost aaa:/:80:/dir のように指定して、http://aaa.$host/をhttp://localhost/dir/だと見なします。\n"+
+			"\t--vhost bbb:/:3000:/ のように指定して、http://bbb.$host/をhttp://localhost:3000/だと見なします。\n"+
+			"\t--vhost bbb:/dir:4000:/ のように指定して、http://bbb.$host/dir/をhttp://localhost:4000/だと見なします。\n"+
+			"\t--vhost の指定は複数指定できます。",
 	)
 	flag.Parse()
 
@@ -228,6 +282,13 @@ func parseArgs() *Config {
 		}
 		config.auth = append(config.auth, *a)
 		config.authDir[a.Path] = true
+	}
+	for _, str := range vhostOption {
+		vhost, err := parseVirtualHost(str) // 引数reverseの後ろの文字列を解析する
+		if err != nil {
+			log.Fatalf("invalid virtual host format: %v", err)
+		}
+		config.vhost = append(config.vhost, *vhost)
 	}
 	defer func() {
 		// メモリ上にパスワード絶対残さないマン
@@ -280,6 +341,27 @@ func parseReverseProxies(s string) (*ReverseProxies, error) {
 		proxy.OutDir = args[2]
 	}
 	return &proxy, nil
+}
+
+// 引数vhostの後ろの文字列を解析する
+// 例) --vhost aaa:/:999:bbb であればaaa:/:999:bbbの部分
+func parseVirtualHost(s string) (*VirtualHost, error) {
+	args := strings.Split(s, ":")
+	if len(args) != 4 { // aaa:/:999:bbb
+		return nil, fmt.Errorf("invalid format")
+	}
+	port, err := strconv.Atoi(args[2])
+	if err != nil {
+		log.Printf("引数vhostによるポート番号の指定が不正です。: %s", args[2])
+		return nil, err
+	}
+	vhost := VirtualHost{
+		Vhost:  args[0],
+		InDir:  args[1],
+		Port:   port,
+		OutDir: args[3],
+	}
+	return &vhost, nil
 }
 
 func zeroClear(s *string) {
