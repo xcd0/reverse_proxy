@@ -1,4 +1,5 @@
 reverse_proxy
 reverse_proxy.exe
+reverse_proxy_mac
 *.log
 *.sh

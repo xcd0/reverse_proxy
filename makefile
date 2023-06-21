@@ -10,9 +10,10 @@ FLAGS_WIN=-tags netgo -installsuffix netgo -trimpath "-ldflags=-buildid=" -ldfla
 
 
 all:
-	make win
-	make linux
-	make mac
+	make win & \
+	make linux & \
+	make mac & \
+	wait
 
 release-no-tag:
 	goreleaser release --snapshot --clean
@@ -29,16 +30,12 @@ win:
 linux:
 	rm -rf $(DST)/$(BIN)
 	GOARCH=$(GOARCH) GOOS=linux go build -o $(DST)/$(BIN) $(FLAGS_UNIX) $(FLAGS)
-	#rm -rf $(DST)/$(BIN).upx && upx $(DST)/$(BIN) -o $(DST)/$(BIN).upx
-	#rm -rf $(DST)/$(BIN)
-	#mv $(DST)/$(BIN).upx $(DST)/$(BIN)
+	upx $(DST)/$(BIN)
 
 mac:
-	rm -rf $(DST)/$(BIN)
-	GOOS=darwin go build -o $(DST)/$(BIN) $(FLAGS_UNIX) $(FLAGS)
-	#rm -rf $(DST)/$(BIN).upx && upx $(DST)/$(BIN) -o $(DST)/$(BIN).upx
-	#rm -rf $(DST)/$(BIN)
-	#mv $(DST)/$(BIN).upx $(DST)/$(BIN)
+	rm -rf $(DST)/$(BIN)_mac
+	GOOS=darwin go build -o $(DST)/$(BIN)_mac $(FLAGS_UNIX) $(FLAGS)
+	upx $(DST)/$(BIN)
 
 
 pi:
