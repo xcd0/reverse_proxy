@@ -54,7 +54,7 @@ Usage of ./reverse_proxy:
 ```sh
 $ ./reverse_proxy \
 	--host example.com \
-	--root /var/www/html/ \
+	--reverse /:f:/var/www/html/ \
 	--reverse git:4000:/ \
 	--reverse redmine:5000:/ \
 	--auth /private:user:password
@@ -82,7 +82,7 @@ $ ./reverse_proxy \
 ```
 $ ./reverse_proxy \
 	--host example.com \
-	--root /var/www/html/ \
+	--reverse /:f:/var/www/html/ \
 	--reverse git:4000:/ \
 	--reverse redmine:5000:/ \
 	--auth /private:user1:password1 \
