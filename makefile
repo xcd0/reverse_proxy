@@ -10,6 +10,9 @@ FLAGS_WIN=-tags netgo -installsuffix netgo -trimpath "-ldflags=-buildid=" -ldfla
 
 
 all:
+	go build
+
+release:
 	make win & \
 	make linux & \
 	make mac & \
@@ -48,3 +51,14 @@ pi:
 upx:
 	until sudo apt install upx -y --fix-missing; do sleep 1; done
 
+
+pull:
+	git pull
+
+restart:
+	sudo service reverse_proxy stop
+	make
+	sudo service reverse_proxy start
+	sudo service reverse_proxy status
+status:
+	sudo service reverse_proxy status

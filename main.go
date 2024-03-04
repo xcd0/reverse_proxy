@@ -4,12 +4,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"net/http/httputil"
 	"net/url"
 	"strings"
-	"unsafe"
-
-	"golang.org/x/crypto/bcrypt"
 )
 
 /*
@@ -30,20 +26,81 @@ func main() {
 	config = parseArgs()                     // 引数を解析しして構造体Configを作る
 	log.Print(config)
 
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		var handler http.Handler
+
+		// リクエストのパスに応じてハンドラを設定
+		if IsFileServe(r.URL.Path) {
+			handler = makeFileServer(r.URL.Path)
+		} else {
+			handler = makeProxy(r.URL.Path)
+		}
+
+		log.Printf("config.authDirs : %#v", config.authDirs) // アクセス制限があるディレクトリ
+
+		// config.authに基づいてBasic認証を適用
+	BASIC_AUTH_SEARCH:
+		for _, ad := range config.authDirs {
+			log.Printf("url: %#v >< %#v", r.URL.Path, ad)
+			if strings.HasPrefix(r.URL.Path, ad) {
+				log.Printf("url: %#v ⊃  %#v", r.URL.Path, ad)
+				for _, authConfig := range config.auth {
+					if authConfig.Path == ad {
+						log.Printf("find authConfig : %#v", authConfig)
+						handler = BasicAuth(handler, &authConfig)
+						break BASIC_AUTH_SEARCH
+					}
+				}
+				log.Printf("find authConfig : NG")
+			}
+		}
+		handler.ServeHTTP(w, r)
+	})
+
+	http.ListenAndServe(":80", nil)
+}
+
+func IsFileServe(path string) bool {
+	for p, rp := range config.mapReverse {
+		if strings.HasPrefix(path, p) {
+			if rp.FileServe {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func contains(a string, b []string) bool {
+	for _, v := range b {
+		if a == v {
+			return true // a が b の中に見つかった場合、true を返す
+		}
+	}
+	return false // b の中に a が見つからなかった場合、false を返す
+}
+
+/*
+func oldmain() {
+	log.SetFlags(log.Ltime | log.Lshortfile) // ログの出力書式を設定する
+	config = parseArgs()                     // 引数を解析しして構造体Configを作る
+	log.Print(config)
+
 	{
 		router := http.NewServeMux()
 		// reverse proxyが設定されていないパスへのアクセスは404を返す。
 		for _, rp := range config.mapReverse {
+
 			if rp.FileServe {
 				// ディレクトリへのアクセスとみなす
 				// ファイルサーバーとして振舞う。
-				dir := "/"
-				if rp.InDir != "/" {
-					dir = fmt.Sprintf("/%s/", rp.InDir)
-				}
-				log.Printf("file serve : localhost:%d%v", rp.Port, dir)
-				h := config.mapHandler[rp.InDir] // ファイルサーバーを実行する
-				router.Handle(dir, http.StripPrefix(dir, h))
+				router.Handle(dir, http.StripPrefix(func(rp *ReverseProxies) string {
+					dir := "/"
+					if rp.InDir != "/" {
+						dir = fmt.Sprintf("/%s/", rp.InDir)
+					}
+					log.Printf("file serve : localhost:%d%v", rp.Port, dir)
+				}(rp), config.mapHandler[rp.InDir]))
 			} else {
 				// リバースプロキシサーバーとして振舞う。
 				// reverse proxyが設定されているパスへのアクセスは別のポートに飛ばす
@@ -56,7 +113,36 @@ func main() {
 					indir = fmt.Sprintf("/%s/", rp.InDir)
 				}
 				out_url, _ := url.Parse(fmt.Sprintf("http://localhost:%d%s", rp.Port, outdir))
-				router.Handle(indir, http.StripPrefix(indir, httputil.NewSingleHostReverseProxy(out_url)))
+				proxy := httputil.NewSingleHostReverseProxy(out_url)
+				// レスポンスの書き換えを行う
+				proxy.ModifyResponse = func(response *http.Response) error {
+					log.Printf("info: response rewrite : %v, response: %v", rp.rewriteContentsType, response)
+					for i, t := range rp.rewriteContentsType {
+						log.Printf("rp.rewriteContentsType.%v: %#v", i, t)
+						if len(t) != 3 {
+							log.Printf("rp.rewriteContentsType.%v: %#v : wrong format", i, t)
+							continue
+						}
+						ext := t[0]
+						preCType := t[1]
+						postCType := t[2]
+						ct := response.Header.Get("Content-Type")
+						log.Printf("header contents-type: %#v", ct)
+						//if len(ext) == 0 || strings.HasSuffix(response.Request.URL.Path, ext) { // URLの末尾が ext であればContent-Typeを ctype に設定 元のContent-Typeがtext/plainであるか確認
+						//}
+						if len(ct) == 0 || strings.Contains(ct, preCType) {
+							ct_post := strings.ReplaceAll(ct, preCType, postCType)
+							response.Header.Set("Content-Type", ct_post) // 条件に一致すればContent-Typeを変更
+							log.Printf("Info: Rewrite contents type: ext:%v, %#v -> %#v", ext, ct, ct_post)
+						}
+						log.Printf("rewrited header contents-type: %#v", response.Header.Get("Content-Type"))
+						response.Header.Set("Cache-Control", "no-cache, no-store, must-revalidate")
+						response.Header.Set("Pragma", "no-cache")
+						response.Header.Set("Expires", "0")
+						log.Printf("rewrited header contents-type: %#v", response.Header.Get("Content-Type"))
+					}
+					return nil
+				}
 				log.Printf("in:%v,out:%v", indir, out_url)
 			}
 		}
@@ -87,6 +173,32 @@ func main() {
 	}
 }
 
+func CheckBasicAuth(dir string) []Auth {
+	auth := []Auth{}
+	for _, a := range config.authDirs {
+		sa := string(a)
+		if strings.HasPrefix(dir, sa) { // outdirもaも/で始まる。
+			log.Printf("check dir : %s >< %v", dir, sa)
+			// アクセス制限対象ディレクトリであった
+			log.Printf("%v is protected by basic authentication.", dir)
+			for i, ca := range config.auth {
+				log.Printf("ca.Path: %#v, a: %#v", ca.Path, sa)
+				if ca.Path == sa {
+					auth = append(auth, config.auth[i]) // 以降の処理で使いやすいようにauthに入れておく。
+					log.Printf("path:%#v, user:%#v, hashed password:%#v", config.auth[i].Path, config.auth[i].UserName, string(config.auth[i].Password))
+				}
+			}
+			if len(auth) == 0 {
+				// 謎
+				log.Fatalf("バグ : マッチするはずのところでスルーした")
+			}
+		}
+	}
+	return auth
+}
+
+*/
+
 func Log(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rAddr := r.RemoteAddr
@@ -97,46 +209,51 @@ func Log(h http.Handler) http.Handler {
 	})
 }
 
+/*
 func isThisDirAccessControled(path string, config *Config) bool {
-	/*
-		if path == "/" {
-			return true // 全てアクセス制限
-		}
-	*/
+//		if path == "/" {
+//			return true // 全てアクセス制限
+//		}
 
 	// アクセスしようとしているpathが /a/b/cで
 	paths := strings.Split(path, "/") // a, b, c
-	tmp := "/"
 	log.Println("path : ", path)
-	log.Println("conf : ", config.authDir)
+	log.Println("conf : ", config.authDirs)
 
 	for _, d := range paths {
+		tmp := "/"
 		tmp, _ = url.JoinPath(tmp, d) // a, a/b, a/b/cという感じに調べる
-		v, ok := config.authDir[tmp]
-		log.Printf("check dir : %s, %v, %v, d : %v", tmp, v, ok, d)
-		if ok {
-			// アクセス禁止対象ディレクトリであった
-			return true
+		for _, a := range config.authDirs {
+			log.Printf("check dir : %s >< %v", tmp, a)
+			if strings.HasPrefix(tmp, a) {
+				// アクセス禁止対象ディレクトリであった
+				log.Printf("%v is protected by basic authentication.", tmp)
+				return true
+			}
+			log.Printf("check ok: %s", tmp)
 		}
 	}
 	return false
 }
 
 // ベーシック認証を実行するミドルウェア
-func authUser(w http.ResponseWriter, r *http.Request, config *Config) bool {
+func authUser(w http.ResponseWriter, r *http.Request) {
 	username, password, ok := r.BasicAuth()
 	defer zeroClear(&password)
 	if !ok {
 		w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return false
+		return
 	}
+	proxy.ServeHTTP(w, r)
+	return
+	//////////////
 
 	path := r.URL.Path
 
 	// そもそもこのパスがアクセス禁止対象のパスかどうか
 	//if !isThisDirAccessControled(path, config) {
-	//	return true
+	//	return
 	//}
 
 	for _, a := range config.auth {
@@ -147,9 +264,9 @@ func authUser(w http.ResponseWriter, r *http.Request, config *Config) bool {
 		nameok := string(username) == a.UserName
 		passok := func() bool {
 			if err := bcrypt.CompareHashAndPassword(a.Password, unsafe.Slice(unsafe.StringData(password), len(password))); err != nil {
-				return false
+				return
 			}
-			return true
+			return
 		}()
 
 		log.Printf("a %v", a)
@@ -159,14 +276,16 @@ func authUser(w http.ResponseWriter, r *http.Request, config *Config) bool {
 		log.Printf("dir %v, name %v, pass %v", dirok, nameok, passok)
 
 		if dirok && nameok && passok {
-			return true
+			return
 		}
 	}
 
 	w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
 	http.Error(w, "Unauthorized", http.StatusUnauthorized)
-	return false
+	return
 }
+
+*/
 
 // / *
 

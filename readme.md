@@ -12,22 +12,25 @@ Usage of ./reverse_proxy:
         basic認証によるアクセス制限を設定します。
             --auth /aaa:alice:password のように指定して、http://localhost/aaa/へのアクセスをbasic認証でアクセス制限します。
             ディレクトリ指定は先頭に/をつけてください。
-            --auth の指定は複数指定できます。パスワードはhash化されて保持されます。再設定したい場合はサーバーを再起動させてください。
+            --auth の指定は複数指定できます。パスワードはhash化されて保持されます。再設定したい場合は再起動してください。
   -host string
         サーバーのドメインを指定します。指定がないときエラーです。
   -log string
         指定のパスにログファイルを出力します。指定がないときreverse_proxy.logに出力します。
   -reverse value
         リバースプロキシを定義します。 --reverse の指定は複数指定できます。
+        書式) <外部サブディレクトリ>:<ポート番号>:<内部サブディレクトリ>@<拡張子>:<元Contents-Type>:<新Contents-Type> @より後ろは複数可
             --reverse aaa:1000:bbb      のように指定すると http://localhost/aaa/  が http://localhost:1000/bbb  に転送されます。
             --reverse ccc:2000          のように指定すると http://localhost/ccc/  が http://localhost:2000/ccc/ に転送されます。
             --reverse ddd:3000:/        のように指定すると http://localhost/ddd/  が http://localhost:3000/     に転送されます。
             --reverse /:4000:eee        のように指定すると http://localhost/      が http://localhost:4000/eee  に転送されます。
             --reverse /:5000            のように指定すると http://localhost/      が http://localhost:5000/     に転送されます。
-            --reverse /:f:/fuga         のように指定すると http://localhost/      を /fuga ディレクトリへのアクセスと見なし、ファイルサーバーとして振
-舞います。
-            --reverse hoge:f:/fuga/piyo のように指定すると http://localhost/hoge/ を /fuga/piyoディレクトリへのアクセスと見なし、ファイルサーバーとし
-て振舞います。
+            --reverse /:f:/fuga         のように指定すると http://localhost/      を /fuga ディレクトリへのアクセスと見なし、ファイルサーバーとして振舞います。
+            --reverse hoge:f:/fuga/piyo のように指定すると http://localhost/hoge/ を /fuga/piyoディレクトリへのアクセスと見なし、ファイルサーバーとして振舞います。
+            --reverse ddd:3000:/@.html:text/plain:text/html のように指定すると http://localhost/ddd/ が http://localhost:3000/ に転送されつつ、
+                URLの末尾が.htmlの時で、コンテンツタイプがtext/plainの場合コンテンツタイプをtext/htmlに書き換える、ようなことができます。
+                @区切りで複数可能。'@.html:text/plain:text/html@.json:text/plain:application/json'
+                拡張子は空にすると拡張子で制限しなくなる。例)'@:text/plain:text/html' 
   -vhost value
         name baseのvirtual host機能を提供します。 --vhost の指定は複数指定できます。
             --vhost aaa:/:80:/      のように指定して、 http://aaa.$host/     を http://localhost/      へ転送します。
