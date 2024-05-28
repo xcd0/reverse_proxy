@@ -18,14 +18,15 @@ func makeProxy(reqUrl string) http.Handler {
 	// reverse proxyが設定されているパスへのアクセスは別のポートに飛ばす
 	outdir := "/"
 	if rp.OutDir != "/" {
-		outdir = fmt.Sprintf("/%s/", rp.OutDir)
+		outdir = fmt.Sprintf("%s/", rp.OutDir)
 	}
 	indir := "/"
 	if rp.InDir != "/" {
-		indir = fmt.Sprintf("/%s/", rp.InDir)
+		indir = fmt.Sprintf("%s/", rp.InDir)
 	}
 	out_url, _ := url.Parse(fmt.Sprintf("http://localhost:%d%s", rp.Port, outdir))
 	proxy := httputil.NewSingleHostReverseProxy(out_url)
+	log.Printf("revese proxy : http://localhost%v -> %v", reqUrl, out_url)
 	// レスポンスの書き換えを行う
 	proxy.ModifyResponse = func(response *http.Response) error {
 		log.Printf("info: response rewrite : %v, response: %v", rp.rewriteContentsType, response)
@@ -43,11 +44,11 @@ func makeProxy(reqUrl string) http.Handler {
 			//if len(ext) == 0 || strings.HasSuffix(response.Request.URL.Path, ext) { // URLの末尾が ext であればContent-Typeを ctype に設定 元のContent-Typeがtext/plainであるか確認
 			//}
 			if len(ct) == 0 || strings.Contains(ct, preCType) {
+				log.Printf("original header contents-type: %#v", response.Header.Get("Content-Type"))
 				ct_post := strings.ReplaceAll(ct, preCType, postCType)
 				response.Header.Set("Content-Type", ct_post) // 条件に一致すればContent-Typeを変更
 				log.Printf("Info: Rewrite contents type: ext:%v, %#v -> %#v", ext, ct, ct_post)
 			}
-			log.Printf("rewrited header contents-type: %#v", response.Header.Get("Content-Type"))
 			response.Header.Set("Cache-Control", "no-cache, no-store, must-revalidate")
 			response.Header.Set("Pragma", "no-cache")
 			response.Header.Set("Expires", "0")

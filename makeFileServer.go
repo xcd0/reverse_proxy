@@ -14,7 +14,7 @@ func makeFileServer(url string) http.Handler {
 	// Basic認証が不要なファイルサーバとして振る舞うパス
 	dir := "/"
 	if rp.InDir != "/" {
-		dir = fmt.Sprintf("/%s/", rp.InDir)
+		dir = fmt.Sprintf("%s/", rp.InDir)
 	}
 	log.Printf("file serve : localhost:%d%v", rp.Port, dir)
 

@@ -52,15 +52,21 @@ func parseReverseProxies(s string) (*ReverseProxies, error) {
 		}
 	}
 
+	preslash := func(s string) string {
+		// 先頭に必ず/が付くようにしつつ、末尾の/を削除する。
+		s = "/" + strings.TrimLeft(strings.TrimRight(s, "/"), "/")
+		return s
+	}
+
 	proxy := ReverseProxies{
-		InDir:               rpSettingArgs[0],
+		InDir:               preslash(rpSettingArgs[0]),
 		Port:                port,
-		OutDir:              rpSettingArgs[0],
+		OutDir:              preslash(rpSettingArgs[0]), // 指定がないとき用。
 		FileServe:           f,
 		rewriteContentsType: [][]string{},
 	}
 	if len(rpSettingArgs) == 3 {
-		proxy.OutDir = rpSettingArgs[2]
+		proxy.OutDir = preslash(rpSettingArgs[2]) // 指定があるとき用。
 	}
 
 	// コンテンツタイプの書き換え指定があれば書き換える。

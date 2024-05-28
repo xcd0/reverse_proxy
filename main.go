@@ -29,45 +29,66 @@ func main() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		var handler http.Handler
 
+		log.Printf("--------------------------------------------------------------------------------")
+		log.Printf(">> %v", r.URL.Path)
+
 		// リクエストのパスに応じてハンドラを設定
 		if IsFileServe(r.URL.Path) {
+			log.Printf("handler = makeFileServer(r.URL.Path)")
 			handler = makeFileServer(r.URL.Path)
 		} else {
+			log.Printf("handler = makeProxy(r.URL.Path)")
 			handler = makeProxy(r.URL.Path)
 		}
 
 		log.Printf("config.authDirs : %#v", config.authDirs) // アクセス制限があるディレクトリ
 
 		// config.authに基づいてBasic認証を適用
-	BASIC_AUTH_SEARCH:
-		for _, ad := range config.authDirs {
-			log.Printf("url: %#v >< %#v", r.URL.Path, ad)
-			if strings.HasPrefix(r.URL.Path, ad) {
-				log.Printf("url: %#v ⊃  %#v", r.URL.Path, ad)
-				for _, authConfig := range config.auth {
-					if authConfig.Path == ad {
-						log.Printf("find authConfig : %#v", authConfig)
-						handler = BasicAuth(handler, &authConfig)
-						break BASIC_AUTH_SEARCH
+		func() {
+			//BASIC_AUTH_SEARCH:
+			for _, ad := range config.authDirs {
+				log.Printf("url: %#v >< %#v", r.URL.Path, ad)
+				if strings.HasPrefix(r.URL.Path, ad) {
+					log.Printf("url: %#v ⊃  %#v", r.URL.Path, ad)
+					for _, authConfig := range config.auth {
+						if authConfig.Path == ad {
+							log.Printf("find authConfig : %#v", authConfig)
+							handler = BasicAuth(handler, &authConfig)
+							return
+							//break BASIC_AUTH_SEARCH
+						}
 					}
+					log.Printf("find authConfig : NG")
 				}
-				log.Printf("find authConfig : NG")
 			}
-		}
+		}()
 		handler.ServeHTTP(w, r)
 	})
 
-	http.ListenAndServe(":80", nil)
+	http.ListenAndServe(fmt.Sprintf(":%v", config.port), nil)
 }
 
 func IsFileServe(path string) bool {
+
+	// マップは/をキーとしている要素がある場合、/は/aaaにもマッチしてしまう。
+	// 愚直にやると/がファイルサーバーの時、ファイルサーバーでない/aaaもファイルサーバーとして振舞ってしまう。
+	// 従って、/以外の登録されているreverse proxyを先に判定し、マッチしない場合のみ/を判定する。
+
 	for p, rp := range config.mapReverse {
+		if p == "/" {
+			continue // for文の後で判定する。
+		}
+		log.Printf("for p: %#v, rp: %#v", p, rp)
 		if strings.HasPrefix(path, p) {
-			if rp.FileServe {
-				return true
-			}
+			log.Printf("strings.HasPrefix(%v, %v): %v, rp.FileServe : %v ", path, p, strings.HasPrefix(path, p), rp.FileServe)
+			return rp.FileServe
 		}
 	}
+
+	if root, ok := config.mapReverse["/"]; ok {
+		return root.FileServe
+	}
+
 	return false
 }
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 // 引数で与えられた文字列を解析してConfigを生成します。
 type Config struct {
 	host     string
+	port     int
 	vhost    []VirtualHost
 	reverse  []*ReverseProxies
 	auth     []Auth
@@ -29,10 +31,26 @@ type Config struct {
 // ReverseProxies は引数で与えられた文字列から解析されたリバースプロキシの設定を保持する構造体です。
 type ReverseProxies struct {
 	Port                int
-	InDir               string
-	OutDir              string
+	InDir               string     // 先頭に/が付き、末尾にはつけない。
+	OutDir              string     // 先頭に/が付き、末尾にはつけない。
 	FileServe           bool       // ファイルサーバーとして振舞うか
 	rewriteContentsType [][]string // コンテンツタイプを書き換える .html:text/plain:text/html のようなイメージ
+}
+
+func (rp *ReverseProxies) Print() string {
+	return fmt.Sprintf(`
+	Port                : %v
+	InDir               : %v
+	OutDir              : %v
+	FileServe           : %v
+	rewriteContentsType : %v
+	`,
+		rp.Port,
+		rp.InDir,
+		rp.OutDir,
+		rp.FileServe,
+		rp.rewriteContentsType,
+	)
 }
 
 type VirtualHost struct {
@@ -62,6 +80,7 @@ func (s *stringSlice) Set(value string) error {
 
 func parseArgs() *Config {
 	config := &Config{
+		port:       80,
 		authDirs:   []string{},
 		mapReverse: map[string]*ReverseProxies{},
 		mapVhost:   map[string]*VirtualHost{},
@@ -71,6 +90,7 @@ func parseArgs() *Config {
 
 	flag.StringVar(&config.host, "host", "", "サーバーのドメインを指定します。指定がないときエラーです。")
 	flag.StringVar(&config.log, "log", "", "指定のパスにログファイルを出力します。指定がないときreverse_proxy.logに出力します。")
+	flag.IntVar(&config.port, "port", 80, "起動するサーバーのポート番号を指定します。指定がないとき80番を使用します。")
 	var authOption stringSlice
 	var reverseOption stringSlice
 	var vhostOption stringSlice
@@ -127,6 +147,7 @@ func parseArgs() *Config {
 		if err != nil {
 			log.Fatalf("invalid reverse proxy format: %v", err)
 		}
+		log.Printf("<<< %v", proxy.Print())
 		config.reverse = append(config.reverse, proxy)
 		config.mapReverse[proxy.InDir] = config.reverse[len(config.reverse)-1]
 		if proxy.FileServe {
