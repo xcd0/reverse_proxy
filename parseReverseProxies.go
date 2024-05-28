@@ -18,6 +18,14 @@ func parseReverseProxies(s string) (*ReverseProxies, error) {
 		log.Printf("debug: s: %#v", s)
 	}
 
+	// --reverse ddd:3000:/eee@.html:text/plain:text/html 対応
+
+	// ddd:3000:/eee@.html:text/plain:text/html
+	// を@で区切り、
+	// ddd:3000:/eee
+	// .html:text/plain:text/html
+	// の2つに分けて、それぞれ:で区切る。
+
 	// @で区切る。
 	args := strings.Split(s, "@")
 	log.Printf("info: args: %v", args)
